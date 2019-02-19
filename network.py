@@ -5,12 +5,14 @@ from utils import jacobian
 
 
 class Net:
-    def __init__(self, lr0):
+    def __init__(self, lr0, epsilon=0.0001):
         self.lr = lr0
+        self.epsilon = epsilon
         self.iter = 0
         self.sess = tf.Session()
 
-        self.writer = tf.summary.FileWriter('log/')
+        self.writer = tf.summary.FileWriter(
+            'log/batch_adjust_g_{}/'.format(epsilon))
         self._net_build()
         self.sess.run(tf.global_variables_initializer())
         # self.saver = tf.train.Saver(self.sess.trainable_variables, max_to_keep=5)
@@ -43,15 +45,23 @@ class Net:
             ],
             axis=1
         )
+        root_j = tf.sqrt(tf.reduce_mean(
+            tf.square(flat_j), axis=0)) + self.epsilon
+
         cur_g = tf.concat([tf.reshape(g, [-1]) for g in self.grad], axis=0)
 
         self.batch_var = tf.reduce_mean(
             tf.reduce_sum(tf.square(flat_j - cur_g), axis=1))
 
+        [g1, g2, g3, g4] = tf.split(tf.divide(cur_g, root_j), [
+                                    784 * 500, 500, 500 * 10, 10])
+        adjust_g = [tf.reshape(g1, [784, 500]), g2,
+                    tf.reshape(g3, [500, 10]), g4]
+
         # embed()
 
         self.minimizer = []
-        for v, g in zip(self.var, self.grad):
+        for v, g in zip(self.var, adjust_g):
             self.minimizer.append(tf.assign_sub(v, g * self.lr))
         self.minimizer = tf.group(self.minimizer)
 
